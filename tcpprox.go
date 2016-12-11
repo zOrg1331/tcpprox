@@ -20,7 +20,7 @@ import (
 
 type TLS struct {
 	Country    []string "GB"
-	Org        []string "SensePost"
+	Org        []string "Staaldraad"
 	CommonName string   "*.domain.com"
 }
 
