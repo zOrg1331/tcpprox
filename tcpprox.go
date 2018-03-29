@@ -1,4 +1,4 @@
-package main
+package tcpprox
 
 // match/replace functionality partially taken from:
 // https://github.com/jpillora/go-tcp-proxy/blob/master/proxy.go
@@ -229,7 +229,7 @@ func createReplacer(replace string) func([]byte) []byte {
 	}
 }
 
-func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, clientCertFile string, clientKeyFile string, dumpInHex bool, replace string) {
+func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, clientCertFile string, clientKeyFile string, dumpInHex bool, replaceStr string, replaceGo bool) {
 	if configFile != "" {
 		data, err := ioutil.ReadFile(configFile)
 		if err != nil {
@@ -254,7 +254,11 @@ func setConfig(configFile string, listenAddr string, remoteHost string, localTls
 	config.LocalTls = localTls
 	config.RemoteTls = remoteTls
 	config.DumpInHex = dumpInHex
-	config.Replacer = createReplacer(replace)
+	if replaceGo == true {
+		config.Replacer = DoReplace
+	} else {
+		config.Replacer = createReplacer(replaceStr)
+	}
 }
 
 func main() {
@@ -268,11 +272,12 @@ func main() {
 	clientCertFile := flag.String("client-cert", "", "Use a specific certificate for client authentication (PEM)")
 	clientKeyFile := flag.String("client-key", "", "Use a specific key file for client authentication (PEM)")
 	dumpInHex := flag.Bool("hexdump", false, "Dump request/responses as hex")
-	replace := flag.String("replace", "", "replace regex (in the form 'regex~replacer')")
+	replaceStr := flag.String("replace", "", "replace regex (in the form 'regex~replacer')")
+	replaceGo := flag.Bool("replace-module", false, "use DoReplace function from 'replace.go' module for data replacements")
 
 	flag.Parse()
 
-	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *clientCertFile, *clientKeyFile, *dumpInHex, *replace)
+	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *clientCertFile, *clientKeyFile, *dumpInHex, *replaceStr, *replaceGo)
 
 	if config.RemoteHost == "" {
 		fmt.Println("[x] Remote host required")
