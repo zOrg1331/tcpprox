@@ -35,6 +35,8 @@ type Config struct {
 	TLS        *TLS
 	LocalCertFile   string ""
 	LocalKeyFile    string ""
+	ClientCertFile  string ""
+	ClientKeyFile   string ""
 	LocalTls   bool
 	RemoteTls  bool
 	DumpInHex  bool
@@ -104,6 +106,14 @@ func handleConnection(conn net.Conn) {
 
 	if config.RemoteTls == true {
 		conf := tls.Config{InsecureSkipVerify: true}
+		if config.ClientCertFile != "" {
+			cert, err := tls.LoadX509KeyPair(config.ClientCertFile, config.ClientKeyFile)
+			if err != nil {
+				fmt.Printf("[!] Failed to parse the provided client certificates\n")
+			} else {
+				conf.Certificates = []tls.Certificate{cert}
+			}
+		}
 		connR, err = tls.Dial("tcp", config.RemoteHost, &conf)
 	} else {
 		connR, err = net.Dial("tcp", config.RemoteHost)
@@ -219,7 +229,7 @@ func createReplacer(replace string) func([]byte) []byte {
 	}
 }
 
-func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, dumpInHex bool, replace string) {
+func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, clientCertFile string, clientKeyFile string, dumpInHex bool, replace string) {
 	if configFile != "" {
 		data, err := ioutil.ReadFile(configFile)
 		if err != nil {
@@ -239,6 +249,8 @@ func setConfig(configFile string, listenAddr string, remoteHost string, localTls
 	config.RemoteHost = remoteHost
 	config.LocalCertFile = localCertFile
 	config.LocalKeyFile = localKeyFile
+	config.ClientCertFile = clientCertFile
+	config.ClientKeyFile = clientKeyFile
 	config.LocalTls = localTls
 	config.RemoteTls = remoteTls
 	config.DumpInHex = dumpInHex
@@ -253,12 +265,14 @@ func main() {
 	remoteTls := flag.Bool("remote-tls", false, "Enable TLS for remote connection")
 	localCertFile := flag.String("local-cert", "", "Use a specific certificate file for local listener (PEM)")
 	localKeyFile := flag.String("local-key", "", "Use a specific key file for local listener (PEM)")
+	clientCertFile := flag.String("client-cert", "", "Use a specific certificate for client authentication (PEM)")
+	clientKeyFile := flag.String("client-key", "", "Use a specific key file for client authentication (PEM)")
 	dumpInHex := flag.Bool("hexdump", false, "Dump request/responses as hex")
 	replace := flag.String("replace", "", "replace regex (in the form 'regex~replacer')")
 
 	flag.Parse()
 
-	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *dumpInHex, *replace)
+	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *clientCertFile, *clientKeyFile, *dumpInHex, *replace)
 
 	if config.RemoteHost == "" {
 		fmt.Println("[x] Remote host required")
