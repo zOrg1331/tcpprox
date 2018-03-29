@@ -32,6 +32,7 @@ type Config struct {
 	LocalKeyFile    string ""
 	LocalTls   bool
 	RemoteTls  bool
+	DumpInHex  bool
 }
 
 var config Config
@@ -69,8 +70,11 @@ func handleServerMessage(connR, connC net.Conn, id int) {
 		n, err := connR.Read(data)
 		if n > 0 {
 			connC.Write(data[:n])
-			fmt.Printf("From Server [%d]:\n%s\n", id, hex.Dump(data[:n]))
-			//fmt.Printf("From Server:\n%s\n",hex.EncodeToString(data[:n]))
+			if config.DumpInHex == true {
+				fmt.Printf("[*][%d] Response:\n%s\n", id, hex.Dump(data[:n]))
+			} else {
+				fmt.Printf("[*][%d] Response:\n%s\n", id, string(data[:n]))
+			}
 		}
 		if err != nil && err != io.EOF {
 			fmt.Println(err)
@@ -102,8 +106,11 @@ func handleConnection(conn net.Conn) {
 		data := make([]byte, 2048)
 		n, err := conn.Read(data)
 		if n > 0 {
-			fmt.Printf("From Client [%d]:\n%s\n", id, hex.Dump(data[:n]))
-			//fmt.Printf("From Client:\n%s\n",hex.EncodeToString(data[:n]))
+			if config.DumpInHex == true {
+				fmt.Printf("[*][%d] Request:\n%s\n", id, hex.Dump(data[:n]))
+			} else {
+				fmt.Printf("[*][%d] Request:\n%s\n", id, string(data[:n]))
+			}
 			connR.Write(data[:n])
 			_ = hex.Dump(data[:n])
 		}
@@ -165,7 +172,7 @@ func startListener() {
 	conn.Close()
 }
 
-func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string) {
+func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, dumpInHex bool) {
 	if configFile != "" {
 		data, err := ioutil.ReadFile(configFile)
 		if err != nil {
@@ -187,6 +194,7 @@ func setConfig(configFile string, listenAddr string, remoteHost string, localTls
 	config.LocalKeyFile = localKeyFile
 	config.LocalTls = localTls
 	config.RemoteTls = remoteTls
+	config.DumpInHex = dumpInHex
 }
 
 func main() {
@@ -197,10 +205,11 @@ func main() {
 	remoteTls := flag.Bool("remote-tls", false, "Enable TLS for remote connection")
 	localCertFile := flag.String("local-cert", "", "Use a specific certificate file for local listener (PEM)")
 	localKeyFile := flag.String("local-key", "", "Use a specific key file for local listener (PEM)")
+	dumpInHex := flag.Bool("hexdump", false, "Dump request/responses as hex")
 
 	flag.Parse()
 
-	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile)
+	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *dumpInHex)
 
 	if config.RemoteHost == "" {
 		fmt.Println("[x] Remote host required")
