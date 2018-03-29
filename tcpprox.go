@@ -25,11 +25,13 @@ type TLS struct {
 }
 
 type Config struct {
-	Remotehost string
-	Localhost  string
-	Localport  int
+	RemoteHost  string ""
+	ListenAddr  string ""
 	TLS        *TLS
-	CertFile   string ""
+	LocalCertFile   string ""
+	LocalKeyFile    string ""
+	LocalTls   bool
+	RemoteTls  bool
 }
 
 var config Config
@@ -77,15 +79,15 @@ func handleServerMessage(connR, connC net.Conn, id int) {
 	}
 }
 
-func handleConnection(conn net.Conn, isTLS bool) {
+func handleConnection(conn net.Conn) {
 	var err error
 	var connR net.Conn
 
-	if isTLS == true {
+	if config.RemoteTls == true {
 		conf := tls.Config{InsecureSkipVerify: true}
-		connR, err = tls.Dial("tcp", config.Remotehost, &conf)
+		connR, err = tls.Dial("tcp", config.RemoteHost, &conf)
 	} else {
-		connR, err = net.Dial("tcp", config.Remotehost)
+		connR, err = net.Dial("tcp", config.RemoteHost)
 	}
 
 	if err != nil {
@@ -114,15 +116,18 @@ func handleConnection(conn net.Conn, isTLS bool) {
 	conn.Close()
 }
 
-func startListener(isTLS bool) {
-
+func startListener() {
 	var err error
 	var conn net.Listener
 	var cert tls.Certificate
 
-	if isTLS == true {
-		if config.CertFile != "" {
-			cert, _ = tls.LoadX509KeyPair(fmt.Sprint(config.CertFile, ".pem"), fmt.Sprint(config.CertFile, ".key"))
+	if config.LocalTls == true {
+		fmt.Printf("starting TLS listener\n")
+		if config.LocalCertFile != "" {
+			cert, err = tls.LoadX509KeyPair(config.LocalCertFile, config.LocalKeyFile)
+			if err != nil {
+				panic("failed to parse the provided certificates: " + err.Error())
+			}
 		} else {
 			ca_b, priv := genCert()
 			cert = tls.Certificate{
@@ -136,10 +141,10 @@ func startListener(isTLS bool) {
 		}
 		conf.Rand = rand.Reader
 
-		conn, err = tls.Listen("tcp", fmt.Sprint(config.Localhost, ":", config.Localport), &conf)
-
+		conn, err = tls.Listen("tcp", config.ListenAddr, &conf)
 	} else {
-		conn, err = net.Listen("tcp", fmt.Sprint(config.Localhost, ":", config.Localport))
+		fmt.Printf("starting raw TCP listener\n")
+		conn, err = net.Listen("tcp", config.ListenAddr)
 	}
 
 	if err != nil {
@@ -155,12 +160,12 @@ func startListener(isTLS bool) {
 			break
 		}
 		fmt.Printf("[*] Accepted from: %s\n", cl.RemoteAddr())
-		go handleConnection(cl, isTLS)
+		go handleConnection(cl)
 	}
 	conn.Close()
 }
 
-func setConfig(configFile string, localPort int, localHost, remoteHost string, certFile string) {
+func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string) {
 	if configFile != "" {
 		data, err := ioutil.ReadFile(configFile)
 		if err != nil {
@@ -176,38 +181,32 @@ func setConfig(configFile string, localPort int, localHost, remoteHost string, c
 		config = Config{TLS: &TLS{}}
 	}
 
-	if certFile != "" {
-		config.CertFile = certFile
-	}
-
-	if localPort != 0 {
-		config.Localport = localPort
-	}
-	if localHost != "" {
-		config.Localhost = localHost
-	}
-	if remoteHost != "" {
-		config.Remotehost = remoteHost
-	}
+	config.ListenAddr = listenAddr
+	config.RemoteHost = remoteHost
+	config.LocalCertFile = localCertFile
+	config.LocalKeyFile = localKeyFile
+	config.LocalTls = localTls
+	config.RemoteTls = remoteTls
 }
 
 func main() {
-	localPort := flag.Int("p", 0, "Local Port to listen on")
-	localHost := flag.String("l", "", "Local address to listen on")
-	remoteHostPtr := flag.String("r", "", "Remote Server address host:port")
-	configPtr := flag.String("c", "", "Use a config file (set TLS ect) - Commandline params overwrite config file")
-	tlsPtr := flag.Bool("s", false, "Create a TLS Proxy")
-	certFilePtr := flag.String("cert", "", "Use a specific certificate file")
+	listenAddr := flag.String("listen", "127.0.0.1:8080", "Local address to listen on")
+	remoteHost := flag.String("remote", "", "Remote server to connect to example.com:80")
+	configPtr := flag.String("config", "", "Use a config file (commandline params override config file)")
+	localTls := flag.Bool("local-tls", false, "Enable TLS for local listener")
+	remoteTls := flag.Bool("remote-tls", false, "Enable TLS for remote connection")
+	localCertFile := flag.String("local-cert", "", "Use a specific certificate file for local listener (PEM)")
+	localKeyFile := flag.String("local-key", "", "Use a specific key file for local listener (PEM)")
 
 	flag.Parse()
 
-	setConfig(*configPtr, *localPort, *localHost, *remoteHostPtr, *certFilePtr)
+	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile)
 
-	if config.Remotehost == "" {
+	if config.RemoteHost == "" {
 		fmt.Println("[x] Remote host required")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	startListener(*tlsPtr)
+	startListener()
 }
