@@ -66,7 +66,7 @@ func genCert() ([]byte, *rsa.PrivateKey) {
 
 func handleServerMessage(connR, connC net.Conn, id int) {
 	for {
-		data := make([]byte, 2048)
+		data := make([]byte, 0xffff)
 		n, err := connR.Read(data)
 		if n > 0 {
 			connC.Write(data[:n])
@@ -103,7 +103,7 @@ func handleConnection(conn net.Conn) {
 	ids++
 	go handleServerMessage(connR, conn, id)
 	for {
-		data := make([]byte, 2048)
+		data := make([]byte, 0xffff)
 		n, err := conn.Read(data)
 		if n > 0 {
 			if config.DumpInHex == true {
