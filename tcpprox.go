@@ -1,5 +1,8 @@
 package main
 
+// match/replace functionality partially taken from:
+// https://github.com/jpillora/go-tcp-proxy/blob/master/proxy.go
+
 import (
 	"crypto/rand"
 	"crypto/rsa"
@@ -16,6 +19,8 @@ import (
 	"net"
 	"os"
 	"time"
+	"regexp"
+	"strings"
 )
 
 type TLS struct {
@@ -33,6 +38,7 @@ type Config struct {
 	LocalTls   bool
 	RemoteTls  bool
 	DumpInHex  bool
+	Replacer   func([]byte) []byte
 }
 
 var config Config
@@ -69,12 +75,21 @@ func handleServerMessage(connR, connC net.Conn, id int) {
 		data := make([]byte, 0xffff)
 		n, err := connR.Read(data)
 		if n > 0 {
-			connC.Write(data[:n])
-			if config.DumpInHex == true {
-				fmt.Printf("[*][%d] Response:\n%s\n", id, hex.Dump(data[:n]))
-			} else {
-				fmt.Printf("[*][%d] Response:\n%s\n", id, string(data[:n]))
+			b := data[:n]
+
+			// execute replace
+			if config.Replacer != nil {
+				b = config.Replacer(b)
 			}
+
+			// print (probably modified) data
+			if config.DumpInHex == true {
+				fmt.Printf("[*][%d] Response:\n%s\n", id, hex.Dump(b))
+			} else {
+				fmt.Printf("[*][%d] Response:\n%s\n", id, string(b))
+			}
+
+			connC.Write(b)
 		}
 		if err != nil && err != io.EOF {
 			fmt.Println(err)
@@ -106,13 +121,21 @@ func handleConnection(conn net.Conn) {
 		data := make([]byte, 0xffff)
 		n, err := conn.Read(data)
 		if n > 0 {
-			if config.DumpInHex == true {
-				fmt.Printf("[*][%d] Request:\n%s\n", id, hex.Dump(data[:n]))
-			} else {
-				fmt.Printf("[*][%d] Request:\n%s\n", id, string(data[:n]))
+			b := data[:n]
+
+			// execute replace
+			if config.Replacer != nil {
+				b = config.Replacer(b)
 			}
-			connR.Write(data[:n])
-			_ = hex.Dump(data[:n])
+
+			// print (probably modified) data
+			if config.DumpInHex == true {
+				fmt.Printf("[*][%d] Request:\n%s\n", id, hex.Dump(b))
+			} else {
+				fmt.Printf("[*][%d] Request:\n%s\n", id, string(b))
+			}
+
+			connR.Write(b)
 		}
 		if err != nil && err == io.EOF {
 			fmt.Println(err)
@@ -172,7 +195,31 @@ func startListener() {
 	conn.Close()
 }
 
-func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, dumpInHex bool) {
+func createReplacer(replace string) func([]byte) []byte {
+	if replace == "" {
+		return nil
+	}
+	parts := strings.Split(replace, "~")
+	if len(parts) != 2 {
+		fmt.Printf("[-] Invalid replace option")
+		return nil
+	}
+
+	re, err := regexp.Compile(string(parts[0]))
+	if err != nil {
+		fmt.Printf("[-] Invalid replace regex: %s", err)
+		return nil
+	}
+
+	repl := []byte(parts[1])
+
+	fmt.Printf("[*] Replacing '%s' with '%s'\n", re.String(), repl)
+	return func(input []byte) []byte {
+		return re.ReplaceAll(input, repl)
+	}
+}
+
+func setConfig(configFile string, listenAddr string, remoteHost string, localTls bool, remoteTls bool, localCertFile string, localKeyFile string, dumpInHex bool, replace string) {
 	if configFile != "" {
 		data, err := ioutil.ReadFile(configFile)
 		if err != nil {
@@ -195,6 +242,7 @@ func setConfig(configFile string, listenAddr string, remoteHost string, localTls
 	config.LocalTls = localTls
 	config.RemoteTls = remoteTls
 	config.DumpInHex = dumpInHex
+	config.Replacer = createReplacer(replace)
 }
 
 func main() {
@@ -206,10 +254,11 @@ func main() {
 	localCertFile := flag.String("local-cert", "", "Use a specific certificate file for local listener (PEM)")
 	localKeyFile := flag.String("local-key", "", "Use a specific key file for local listener (PEM)")
 	dumpInHex := flag.Bool("hexdump", false, "Dump request/responses as hex")
+	replace := flag.String("replace", "", "replace regex (in the form 'regex~replacer')")
 
 	flag.Parse()
 
-	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *dumpInHex)
+	setConfig(*configPtr, *listenAddr, *remoteHost, *localTls, *remoteTls, *localCertFile, *localKeyFile, *dumpInHex, *replace)
 
 	if config.RemoteHost == "" {
 		fmt.Println("[x] Remote host required")
