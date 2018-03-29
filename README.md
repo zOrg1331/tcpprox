@@ -10,17 +10,16 @@ Usage
 ----
 To create a TLS proxy using the supplied config file:
 
-`tcpprox -s -c config.json -r 172.16.0.12:4550`
+`tcpprox -local-tls -remote-tls -config config.json -remote 172.16.0.12:4550`
 
-To create a normal TCP proxy,  no config file:
+To create a normal TCP proxy, no config file:
 
-`tcpprox -l 0.0.0.0 -p 8081 -r 172.16.0.12:8081`
+`tcpprox -listen 0.0.0.0:8081 -remote 172.16.0.12:8081`
 
 To specify a custom certificate to use (PEM format) you can use the -cert option:
 
-`tcpprox -s -c config.json -cert server`
+`tcpprox -local-tls -remote-tls -c config.json -local-cert cert.pem -local-key key.pem`
 
-Where server is the prefix to server.pem and server.key (I'm lazy...)
 To generate valid certificate and key:
 
 `
